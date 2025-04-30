@@ -1,8 +1,8 @@
 """
-Programa de Monitorización del Sistema Eléctrico Español
+Programa de Monitorización del Sistema Eléctrico Español (Versión sin autenticación)
 
-Este programa obtiene y visualiza datos en tiempo real del estado
-de la red eléctrica nacional usando la API de Red Eléctrica de España.
+Este programa obtiene y visualiza datos públicos del estado
+de la red eléctrica nacional usando la API abierta de REE.
 """
 
 import requests
@@ -12,11 +12,10 @@ import logging
 from typing import Dict, Any
 
 # Configuración básica
-API_BASE_URL = "https://api.esios.ree.es"
+API_BASE_URL = "https://apidatos.ree.es"
 HEADERS = {
-    "Accept": "application/json; application/vnd.esios-api-v2+json",
-    "Content-Type": "application/json",
-    "Host": "api.esios.ree.es"
+    "Accept": "application/json",
+    "Content-Type": "application/json"
 }
 
 # Configurar logging
@@ -24,34 +23,12 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-def obtener_token() -> str:
+def hacer_peticion_api(endpoint: str) -> Dict[str, Any]:
     """
-    Obtiene el token de autenticación para la API de REE.
-    
-    Returns:
-        str: Token de autenticación.
-        
-    Raises:
-        SystemExit: Si no se puede obtener el token.
-    """
-    try:
-        # EN LA PRÁCTICA DEBES OBTENER ESTO DE VARIABLES DE ENTORNO O CONFIG
-        token = "TU_TOKEN_DE_API_AQUI"  # Reemplazar con token real
-        if not token or token == "TU_TOKEN_DE_API_AQUI":
-            raise ValueError("Token no configurado")
-        return token
-    except Exception as e:
-        logger.error(f"Error obteniendo token: {e}")
-        raise SystemExit("No se pudo obtener el token de API")
-
-
-def hacer_peticion_api(endpoint: str, token: str) -> Dict[str, Any]:
-    """
-    Realiza una petición a la API de REE.
+    Realiza una petición a la API pública de REE.
     
     Args:
         endpoint (str): Endpoint de la API a consultar.
-        token (str): Token de autenticación.
         
     Returns:
         dict: Respuesta JSON de la API.
@@ -60,79 +37,72 @@ def hacer_peticion_api(endpoint: str, token: str) -> Dict[str, Any]:
         SystemExit: Si la petición falla.
     """
     try:
-        headers = HEADERS.copy()
-        headers["Authorization"] = f"Token token={token}"
-        
         response = requests.get(
             f"{API_BASE_URL}{endpoint}",
-            headers=headers,
+            headers=HEADERS,
             timeout=10
         )
         response.raise_for_status()
-        
         return response.json()
     except requests.exceptions.RequestException as e:
         logger.error(f"Error en petición API: {e}")
         raise SystemExit("Error al conectarse con la API de REE")
 
 
-def obtener_datos_red_electrica(token: str) -> Dict[str, Any]:
+def obtener_datos_generacion() -> Dict[str, Any]:
     """
-    Obtiene los datos actuales del sistema eléctrico.
+    Obtiene los datos actuales de generación eléctrica.
     
-    Args:
-        token (str): Token de autenticación.
-        
     Returns:
-        dict: Datos estructurados del sistema eléctrico.
+        dict: Datos estructurados de generación.
     """
-    endpoint = "/indicators/1014"  # Ejemplo, ajustar al endpoint correcto
-    datos = hacer_peticion_api(endpoint, token)
+    endpoint = "/es/datos/generacion/estructura-generacion"
+    datos = hacer_peticion_api(endpoint)
     
-    # Procesamiento básico de datos (ajustar según respuesta real de la API)
+    # Procesamiento de datos (ajustar según respuesta real)
     datos_procesados = {
         "fecha_actualizacion": datos.get("datetime", datetime.now().isoformat()),
-        "demanda_actual": datos.get("value", 0),
-        "porcentaje_renovable": datos.get("renewable_percentage", 0),
+        "total_generacion": datos.get("total", 0),
         "desglose_generacion": {
             "nuclear": datos.get("nuclear", 0),
-            "eolica": datos.get("wind", 0),
+            "eolica": datos.get("eolica", 0),
             "solar": datos.get("solar", 0),
-            "hidraulica": datos.get("hydro", 0),
-            "cogeneracion": datos.get("co-generation", 0),
-            "carbon": datos.get("coal", 0),
-            "ciclo_combinado": datos.get("combined-cycle", 0),
-            "otras": datos.get("other", 0)
+            "hidraulica": datos.get("hidraulica", 0),
+            "cogeneracion": datos.get("cogeneracion", 0),
+            "carbon": datos.get("carbon", 0),
+            "ciclo_combinado": datos.get("ciclo_combinado", 0),
+            "otras": datos.get("otras", 0)
         }
     }
     
     return datos_procesados
 
 
-def generar_grafico_demanda(datos: Dict[str, Any]) -> None:
+def obtener_datos_demanda() -> Dict[str, Any]:
     """
-    Genera un gráfico de la demanda eléctrica actual.
+    Obtiene los datos actuales de demanda eléctrica.
     
-    Args:
-        datos (dict): Datos del sistema eléctrico.
+    Returns:
+        dict: Datos estructurados de demanda.
     """
-    plt.figure(figsize=(10, 6))
-    plt.bar(["Demanda Actual"], [datos["demanda_actual"]], color='blue')
-    plt.title(f"Demanda Eléctrica Actual: {datos['demanda_actual']} MW")
-    plt.ylabel("MW")
-    plt.grid(axis='y', linestyle='--', alpha=0.7)
-    plt.tight_layout()
+    endpoint = "/es/datos/demanda/evolucion"
+    datos = hacer_peticion_api(endpoint)
+    
+    datos_procesados = {
+        "fecha_actualizacion": datos.get("datetime", datetime.now().isoformat()),
+        "demanda_actual": datos.get("value", 0),
+        "unidad": "MW"
+    }
+    
+    return datos_procesados
 
 
 def generar_grafico_generacion(datos: Dict[str, Any]) -> None:
     """
     Genera un gráfico circular del mix de generación.
-    
-    Args:
-        datos (dict): Datos del sistema eléctrico.
     """
     desglose = datos["desglose_generacion"]
-    labels = list(desglose.keys())
+    labels = [k.capitalize() for k in desglose.keys()]
     sizes = list(desglose.values())
     colors = [
         '#FF9999', '#66B3FF', '#99FF99', '#FFCC99',
@@ -148,26 +118,23 @@ def generar_grafico_generacion(datos: Dict[str, Any]) -> None:
         startangle=90,
         wedgeprops={'edgecolor': 'white', 'linewidth': 1}
     )
-    plt.title("Mix de Generación Eléctrica")
+    plt.title(f"Mix de Generación Eléctrica\nTotal: {datos['total_generacion']} MW")
     plt.axis('equal')
     plt.tight_layout()
 
 
-def mostrar_datos_consola(datos: Dict[str, Any]) -> None:
+def mostrar_datos_consola(datos_gen: Dict[str, Any], datos_dem: Dict[str, Any]) -> None:
     """
     Muestra los datos principales en la consola.
-    
-    Args:
-        datos (dict): Datos del sistema eléctrico.
     """
     print("\n" + "="*50)
-    print(f"ESTADO DE LA RED ELÉCTRICA - {datos['fecha_actualizacion']}")
+    print(f"ESTADO DE LA RED ELÉCTRICA - {datos_gen['fecha_actualizacion']}")
     print("="*50)
-    print(f"\n• Demanda actual: {datos['demanda_actual']} MW")
-    print(f"• Porcentaje renovable: {datos['porcentaje_renovable']}%")
+    print(f"\n• Demanda actual: {datos_dem['demanda_actual']} {datos_dem['unidad']}")
+    print(f"• Generación total: {datos_gen['total_generacion']} MW")
     
     print("\nMix de generación:")
-    for fuente, valor in datos["desglose_generacion"].items():
+    for fuente, valor in datos_gen["desglose_generacion"].items():
         print(f"  - {fuente.capitalize()}: {valor} MW")
 
 
@@ -178,20 +145,17 @@ def ejecutar_monitorizacion() -> None:
     try:
         logger.info("Iniciando monitorización de la red eléctrica...")
         
-        # 1. Autenticación
-        token = obtener_token()
+        # 1. Obtener datos
+        datos_generacion = obtener_datos_generacion()
+        datos_demanda = obtener_datos_demanda()
         
-        # 2. Obtener datos
-        datos = obtener_datos_red_electrica(token)
+        # 2. Mostrar en consola
+        mostrar_datos_consola(datos_generacion, datos_demanda)
         
-        # 3. Mostrar en consola
-        mostrar_datos_consola(datos)
+        # 3. Generar visualizaciones
+        generar_grafico_generacion(datos_generacion)
         
-        # 4. Generar visualizaciones
-        generar_grafico_demanda(datos)
-        generar_grafico_generacion(datos)
-        
-        # 5. Mostrar gráficos
+        # 4. Mostrar gráficos
         plt.show()
         
         logger.info("Monitorización completada con éxito")
